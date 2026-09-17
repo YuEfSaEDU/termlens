@@ -129,6 +129,110 @@ fn diff_color_always_keeps_the_overlap_note_and_paints_the_rows() -> termlens::R
     Ok(())
 }
 
+/// `--color` with no WHEN used to print the raw Option — `None` when the
+/// flag ended the line, `Some("before.snap")` when it quietly ate the
+/// operand after it — internals that name neither the flag's requirement
+/// nor the mistake (#452).
+#[test]
+fn diff_names_a_missing_or_unknown_color_value() -> termlens::Result<()> {
+    // The operand after the flag is taken as the value and refused as one
+    // quoted word, exactly as `--color=pink` always was.
+    let out = with_stdin(
+        &[
+            "diff",
+            "--color",
+            &data("before.snap"),
+            &data("after.snap.new"),
+        ],
+        "",
+    );
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    // The operand is the value, quoted and alone — `data()`'s absolute path
+    // Debug-escapes its backslashes on Windows, so the shape is pinned at
+    // the front and the eaten operand at the back, `Some(` nowhere.
+    assert!(
+        stderr.starts_with(r#"termlens: --color takes auto, always or never, got ""#)
+            && stderr.contains("before.snap")
+            && !stderr.contains("Some("),
+        "the operand named as the value it was taken for: {stderr}"
+    );
+
+    // The flag ending the line has no value to quote, so it says it needs
+    // one — the shape every other flag's missing argument takes.
+    let out = with_stdin(
+        &[
+            "diff",
+            &data("before.snap"),
+            &data("after.snap.new"),
+            "--color",
+        ],
+        "",
+    );
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--color needs a WHEN argument"),
+        "the missing value, not `None`: {stderr}"
+    );
+
+    // The `=` spelling keeps its diagnostic, from the list it now shares.
+    let out = with_stdin(
+        &[
+            "diff",
+            "--color=pink",
+            &data("before.snap"),
+            &data("after.snap.new"),
+        ],
+        "",
+    );
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(r#"--color takes auto, always or never, got "pink""#),
+        "the offending word alone: {stderr}"
+    );
+    Ok(())
+}
+
+/// The three good WHENs, in both spellings of the flag (#452): `always`
+/// paints even a pipe, `never` keeps it plain with the `^` marker line,
+/// and `auto` is plain in a pipe — the same bytes as `never` there.
+#[test]
+fn diff_accepts_the_three_color_words_in_both_spellings() -> termlens::Result<()> {
+    let before = data("before.snap");
+    let after = data("after.snap.new");
+    for word in ["auto", "always", "never"] {
+        let inline = format!("--color={word}");
+        // One flag, two spellings: `--color never` and `--color=never`
+        // parse the same three words.
+        for args in [
+            vec!["diff", "--color", word, before.as_str(), after.as_str()],
+            vec!["diff", inline.as_str(), before.as_str(), after.as_str()],
+        ] {
+            let out = with_stdin(&args, "");
+            assert_eq!(out.status.code(), Some(1), "{word}: {out:?}");
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            if word == "always" {
+                assert!(stdout.contains('\x1b'), "painted: {stdout}");
+            } else {
+                assert!(stdout.contains('^'), "plain, marker line and all: {stdout}");
+            }
+        }
+    }
+
+    // In a pipe `auto` is `never`: same bytes, no escape to be found.
+    let never = with_stdin(&["diff", "--color", "never", &before, &after], "");
+    let auto = with_stdin(&["diff", "--color=auto", &before, &after], "");
+    assert_eq!(never.stdout, auto.stdout, "a pipe is not a terminal");
+    assert!(
+        !auto.stdout.contains(&0x1b),
+        "no ANSI in a pipe: {}",
+        String::from_utf8_lossy(&auto.stdout)
+    );
+    Ok(())
+}
+
 #[test]
 fn render_writes_svg_html_ansi_and_text() -> termlens::Result<()> {
     for (flag, needle) in [("--svg", "<svg"), ("--html", "<pre"), ("--text", "styles:")] {

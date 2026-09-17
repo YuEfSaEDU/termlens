@@ -234,6 +234,20 @@ impl ColorWhen {
     }
 }
 
+/// The WHEN word `--color` takes, in either spelling of the flag, or the
+/// diagnostic naming anything else — one list of three words, so the two
+/// spellings cannot drift apart (#452).
+fn color_when(word: &str) -> Result<ColorWhen, String> {
+    match word {
+        "auto" => Ok(ColorWhen::Auto),
+        "always" => Ok(ColorWhen::Always),
+        "never" => Ok(ColorWhen::Never),
+        other => Err(format!(
+            "--color takes auto, always or never, got {other:?}"
+        )),
+    }
+}
+
 fn diff(args: &[String]) -> ExitCode {
     let mut color = ColorWhen::Auto;
     let mut files = Vec::new();
@@ -243,25 +257,22 @@ fn diff(args: &[String]) -> ExitCode {
             "-h" | "--help" => return print(&format!("{DIFF_USAGE}\n")),
             "--version" => return print(&version()),
             "--color" => {
-                color = match args.next().map(String::as_str) {
-                    Some("auto") => ColorWhen::Auto,
-                    Some("always") => ColorWhen::Always,
-                    Some("never") => ColorWhen::Never,
-                    other => {
-                        return fail(&format!(
-                            "--color takes auto, always or never, got {other:?}"
-                        ))
-                    }
+                // A WHEN that is not there is its own diagnostic, in the
+                // shape every other flag's missing value takes — not the
+                // `Some("before.snap")`/`None` the raw Option printed while
+                // quietly eating the operand (#452).
+                let Some(word) = args.next() else {
+                    return fail("--color needs a WHEN argument");
+                };
+                match color_when(word) {
+                    Ok(when) => color = when,
+                    Err(e) => return fail(&e),
                 }
             }
             other if other.starts_with("--color=") => {
-                color = match &other["--color=".len()..] {
-                    "auto" => ColorWhen::Auto,
-                    "always" => ColorWhen::Always,
-                    "never" => ColorWhen::Never,
-                    got => {
-                        return fail(&format!("--color takes auto, always or never, got {got:?}"))
-                    }
+                match color_when(&other["--color=".len()..]) {
+                    Ok(when) => color = when,
+                    Err(e) => return fail(&e),
                 }
             }
             other if other.starts_with('-') && other != "-" => {

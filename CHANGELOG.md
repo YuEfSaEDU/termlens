@@ -17,6 +17,14 @@ reads that marker.
 
 ## [Unreleased]
 
+### Fixed
+
+- `termlens diff --color` with no WHEN after it says `--color needs a WHEN
+  argument`, the diagnostic every other flag's missing value gets, instead of
+  printing the raw `Some("…")`/`None` and quietly eating the operand that
+  followed the flag; a WHEN that is none of the three words is named quoted
+  and alone, in both spellings of the flag (#452).
+
 ## [0.11.2] - 2026-09-17
 
 ### Added
