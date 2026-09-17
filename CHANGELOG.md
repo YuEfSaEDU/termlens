@@ -75,6 +75,16 @@ reads that marker.
   reporting the pushed-away title and `unsupported()` empty — the pairing
   the accessor exists to prevent.
 
+- `Screen::unsupported()` reports the set forms of `OSC 4`, `OSC 10` and
+  `OSC 11`, which were silently dropped (#392). Those numbers were exempt
+  from the record outright, but only their `?` queries are handled —
+  `10;?` and `11;?` are answered, `4;n;?` is named in a timeout — while
+  the same codes also *set* a palette, foreground or background colour,
+  and a set is honoured by nobody. An application that repainted its
+  palette got the wrong colours with nothing saying so. The query forms
+  still do not appear in the record, and `OSC 8` and `OSC 52` remain
+  exempt in every form.
+
 - `Screen::to_svg` and `Screen::to_html` render blink (`SGR 5`) instead of
   dropping it (#378). Every other `Style` attribute already reached all
   three renderings, so a blinking cell produced the very same SVG and HTML

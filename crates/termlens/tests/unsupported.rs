@@ -174,6 +174,46 @@ fn the_sgrs_the_shadow_recovers_are_not_named_as_unimplemented() -> termlens::Re
     Ok(())
 }
 
+/// #392: `OSC 4`, `OSC 10` and `OSC 11` set as well as ask, and only the
+/// question is answered or named elsewhere — so a palette, foreground or
+/// background *set* belongs in this record, where an exemption keyed on the
+/// number alone used to hide it, while the `?` forms still do not appear:
+/// `10;?` and `11;?` are answered and `4;n;?` is named in a timeout.
+#[test]
+#[cfg_attr(
+    windows,
+    ignore = "ConPTY renders what it implements and drops the rest before termlens sees a byte, so the record there is the console's, not the application's (#149)"
+)]
+fn a_colour_set_is_named_but_its_query_is_not() -> termlens::Result<()> {
+    let mut t = emit(&[
+        "--raw",
+        r"\e]4;1;rgb:ff/00/00\x07\e]10;#ff0000\x07\e]11;#00ff00\x07",
+        " DONE",
+        "--wait",
+    ])?;
+    t.wait_until(|s| s.contains("DONE"))?;
+    let s = t.screen();
+    assert_eq!(
+        shapes(&t),
+        ["^[]4;1;rgb:ff/00/00", "^[]10;#ff0000", "^[]11;#00ff00"],
+        "{s}"
+    );
+    t.send(Key::Enter)?;
+    assert!(t.wait_exit()?.success());
+
+    let mut t = emit(&[
+        "--raw",
+        r"\e]10;?\x07\e]11;?\x07\e]4;1;?\x07",
+        " DONE",
+        "--wait",
+    ])?;
+    t.wait_until(|s| s.contains("DONE"))?;
+    assert_eq!(shapes(&t), Vec::<String>::new(), "{}", t.screen());
+    t.send(Key::Enter)?;
+    assert!(t.wait_exit()?.success());
+    Ok(())
+}
+
 /// The other half of #320: an SGR nobody models is still named. `59` is
 /// underline colour — the shadow does not carry it and neither does vt100 —
 /// and it appeared in the original report alongside the four false ones.
