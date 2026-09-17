@@ -229,10 +229,18 @@ impl Callbacks for Unhandled {
         // number dropped the set from this record too, so an application
         // repainting its palette got the wrong colours with nothing saying
         // why (#392).
-        let query = matches!(params.last(), Some(&b"?"));
-        if matches!(params.first(), Some(&b"8" | &b"52"))
-            || (query && matches!(params.first(), Some(&b"4" | &b"10" | &b"11")))
-        {
+        // Exempt exactly what `seq.rs` claims, and in the same shapes it
+        // claims them in. `10;?` and `11;?` are answered, so only that
+        // two-operand form is the responder's: xterm also reads
+        // `10;#ff0000;?` as set-then-query, and since the responder does
+        // not answer *that*, it belongs here. A palette query is any
+        // `4;…?`, which is the rule `seq.rs` applies to it.
+        let colour_query = match params.first() {
+            Some(&b"10" | &b"11") => params.len() == 2 && params[1] == b"?",
+            Some(&b"4") => matches!(params.last(), Some(&b"?")),
+            _ => false,
+        };
+        if matches!(params.first(), Some(&b"8" | &b"52")) || colour_query {
             return;
         }
         let mut shape = String::from("^[]");
@@ -314,6 +322,12 @@ mod tests {
             (&b"\x1b]10;?\x07"[..], Vec::<&str>::new()),
             (&b"\x1b]11;?\x07"[..], Vec::<&str>::new()),
             (&b"\x1b]4;1;?\x07"[..], Vec::<&str>::new()),
+            // A palette query is any `4;…?`, which is what `seq.rs` names.
+            (&b"\x1b]4;1;rgb:ff/00/00;2;?\x07"[..], Vec::<&str>::new()),
+            // But `10`/`11` are answered only in their two-operand form.
+            // xterm reads this one as set-then-query, and the responder
+            // does not answer it, so it belongs in the record.
+            (&b"\x1b]10;#ff0000;?\x07"[..], vec!["^[]10;#ff0000;?"]),
             (&b"\x1b]777;x\x07"[..], vec!["^[]777;x"]),
         ] {
             assert_eq!(
